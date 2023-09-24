@@ -1,12 +1,12 @@
 {
   "name": "SScript",
-  "url": "https://github.com/tahirk786/SScript",
+  "url": "https://github.com/crowplexus/SScript",
   "license": "Apache",
   "tags": ["hscript", "sscript"],
   "description": "Easy to use and fast Haxe script tool",
-  "version": "6.1.8",
+  "version": "6.1.80",
   "classPath": "src/",
-  "releasenote": "SScript 6.1.8",
+  "releasenote": "SScript 6.1.80",
   "contributors": ["tahirk786", "TheWorldMachinima", "TahirRollingArch"],
   "dependencies": {
   }
