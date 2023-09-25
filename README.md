@@ -167,6 +167,3 @@ class PlayState extends flixel.FlxState
 	}
 }
 ```
-
-## Contact
-If you have any questions or requests, open an issue here or message me on my Discord (tahirk786).
