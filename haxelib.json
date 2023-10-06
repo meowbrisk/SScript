@@ -4,9 +4,9 @@
   "license": "Apache",
   "tags": ["hscript", "sscript"],
   "description": "Easy to use and fast Haxe script tool",
-  "version": "6.1.80",
+  "version": "6.1.800",
   "classPath": "src/",
-  "releasenote": "SScript 6.1.80",
+  "releasenote": "SScript 6.1.800 - Improved semicolon detection + cleaned up code",
   "contributors": ["tahirk786", "TheWorldMachinima", "TahirRollingArch"],
   "dependencies": {
   }

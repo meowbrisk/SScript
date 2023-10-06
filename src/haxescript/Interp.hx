@@ -100,7 +100,14 @@ class Interp {
 			var inf = posInfos();
 			var v = el.shift();
 			if( el.length > 0 ) inf.customParams = el;
-			haxe.Log.trace(Std.string(v), inf);
+			if (inf == null)
+				#if sys
+				Sys.println("SScript: " + Std.string(v));
+				#else
+				haxe.Log.trace("SScript: " + Std.string(v));
+				#end
+			else 
+				haxe.Log.trace(Std.string(v), inf);
 		}));
 		variables.set("Bool", Bool);
 		variables.set("Int", Int);
@@ -115,7 +122,7 @@ class Interp {
 			if (curExpr != null)
 				return cast { fileName : curExpr.origin, lineNumber : curExpr.line };
 		#end
-		return cast { fileName : "SScript", lineNumber : 0 };
+		return null;
 	}
 
 	var inFunc : Bool = false;

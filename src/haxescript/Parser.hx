@@ -45,8 +45,6 @@ enum Token {
 	TQDoubleAssign;
 	TQuestion;
 	TDoubleDot;
-	TMeta( s : String );
-	TPrepro( s : String );
 }
 
 @:keep
@@ -76,16 +74,6 @@ class Parser {
 		allow types declarations
 	**/
 	public var allowTypes : Bool =  true;
-
-	/**
-		allow haxe metadata declarations
-	**/
-	public var allowMetadata : Bool = true;
-
-	/**
-		resume from parsing errors (when parsing incomplete code, during completion for example)
-	**/
-	public var resumeErrors : Bool = false;
 
 	// implementation
 	var input : String;
@@ -151,7 +139,6 @@ class Parser {
 
 	public inline function error( err, ?pmin, ?pmax ) {
 		var e=#if hscriptPos new Error(err, pmin, pmax, origin, line) #else err #end;
-		if( !resumeErrors )
 		#if hscriptPos
 		throw new Error(err, pmin, pmax, origin, line);
 		#else
@@ -283,6 +270,7 @@ class Parser {
 		if( e == null ) return false;
 		return switch( expr(e) ) {
 		case EBlock(_), EObject(_), ESwitch(_): true;
+		case ECall(e,_): isBlock(e);
 		case EFunction(_,e,_,_): isBlock(e);
 		case EVar(_, t, e): e != null ? isBlock(e) : t != null ? t.match(CTAnon(_)) : false;
 		case EIf(_,e1,e2): if( e2 != null ) isBlock(e2) else isBlock(e1);
@@ -294,7 +282,7 @@ class Parser {
 		case EReturn(e): e != null && isBlock(e);
 		case ETry(_, _, _, e): isBlock(e);
 		case EMeta(_, _, e): isBlock(e);
-		default: false;
+		default: true;
 		}
 	}
 
@@ -360,9 +348,6 @@ class Parser {
 		var p1 = tokenMin;
 		#end
 		switch( tk ) {
-		case TPrepro("end"):
-			push(TConst(CInt(Std.int(Math.NaN)))); //a const token needs to be pushed in case the conditional check is empty
-			return parseExpr();
 		case TId(id):
 			var e = parseStructure(id);
 			if( e == null )
@@ -444,7 +429,7 @@ class Parser {
 			while( true ) {
 				parseFullExpr(a);
 				tk = token();
-				if( tk == TBrClose || (resumeErrors && tk == TEof) )
+				if( tk == TBrClose)
 					break;
 				push(tk);
 			}
@@ -470,7 +455,7 @@ class Parser {
 		case TBkOpen:
 			var a = new Array();
 			tk = token();
-			while( tk != TBkClose && (!resumeErrors || tk != TEof) ) {
+			while( tk != TBkClose ) {
 				push(tk);
 				a.push(parseExpr());
 				tk = token();
@@ -490,9 +475,6 @@ class Parser {
 				default:
 				}
 			return parseExprNext(mk(EArrayDecl(a), p1));
-		case TMeta(id) if( allowMetadata ):
-			var args = parseMetaArgs();
-			return mk(EMeta(id, args, parseExpr()),p1);
 		default:
 			return unexpected(tk);
 		}
@@ -564,8 +546,6 @@ class Parser {
 	}
 
 	function makeUnop( op, e ) {
-		if( e == null && resumeErrors )
-			return null;
 		return switch( expr(e) ) {
 		case EBinop(bop, e1, e2): mk(EBinop(bop, makeUnop(op, e1), e2), pmin(e1), pmax(e2));
 		case ETernary(e1, e2, e3): mk(ETernary(makeUnop(op, e1), e2, e3), pmin(e1), pmax(e3));
@@ -574,8 +554,6 @@ class Parser {
 	}
 
 	function makeBinop( op, e1, e ) {
-		if( e == null && resumeErrors )
-			return mk(EBinop(op,e1,e),pmin(e1),pmax(e1));
 		return switch( expr(e) ) {
 		case EBinop(op2,e2,e3):
 			if( opPriority.get(op) <= opPriority.get(op2) && !opRightAssoc.exists(op) )
@@ -632,7 +610,6 @@ class Parser {
 			switch (tk)
 			{
 				case TOp("="): e = parseExpr();
-				case TComma | TStatement: push(tk);
 				#if static
 				if (tp != null) switch(tp){
 					case CTPath(p,pr):
@@ -662,7 +639,6 @@ class Parser {
 			switch (tk)
 			{
 				case TOp("="): e = parseExpr();
-				case TComma | TStatement: push(tk);
 				switch(tp){
 					case CTPath(p,pr):
 					switch(p[0]){
@@ -717,9 +693,7 @@ class Parser {
 			var inf = parseFunctionDecl();
 			mk(EFunction(inf.args, inf.body, name, inf.ret, d),p1,pmax(inf.body));
 		case "return":
-			var tk = token();
-			push(tk);
-			var e = if( tk == TStatement ) null else parseExpr();
+			var e = parseExpr();
 			mk(EReturn(e),p1,if( e == null ) tokenMax else pmax(e));
 		case "new":
 			var a = new Array();
@@ -822,8 +796,6 @@ class Parser {
 						switch( tk ) {
 						case TId("case"), TId("default"), TBrClose:
 							break;
-						case TEof if( resumeErrors ):
-							break;
 						default:
 							parseFullExpr(exprs);
 						}
@@ -852,8 +824,6 @@ class Parser {
 						push(tk);
 						switch( tk ) {
 						case TId("case"), TId("default"), TBrClose:
-							break;
-						case TEof if( resumeErrors ):
 							break;
 						default:
 							parseFullExpr(exprs);
@@ -1091,7 +1061,8 @@ class Parser {
 			unexpected(tk);
 			return null; 
 		default:
-			push(tk);
+			//if( tk != TStatement )
+				push(tk);
 			return e1;
 		}
 	}
@@ -1265,7 +1236,7 @@ class Parser {
 					ensure(TDoubleDot);
 					fields.push( { name : name, t : parseType(), meta : meta } );
 					meta = null;
-					ensure(TStatement);
+					//ensure(TStatement);
 				case TId(name):
 					ensure(TDoubleDot);
 					fields.push( { name : name, t : parseType(), meta : meta } );
@@ -1275,9 +1246,6 @@ class Parser {
 					case TBrClose: break;
 					default: unexpected(t);
 					}
-				case TMeta(name):
-					if( meta == null ) meta = [];
-					meta.push({ name : name, params : parseMetaArgs() });
 				default:
 					unexpected(t);
 					break;
@@ -1329,221 +1297,6 @@ class Parser {
 			}
 		}
 		return args;
-	}
-
-	// ------------------------ module -------------------------------
-
-	public function parseModule( content : String, ?origin : String ) {
-		initParser(origin);
-		input = content;
-		readPos = 0;
-		allowTypes = true;
-		allowMetadata = true;
-		var decls = [];
-		while( true ) {
-			var tk = token();
-			if( tk == TEof ) break;
-			push(tk);
-			decls.push(parseModuleDecl());
-		}
-		return decls;
-	}
-
-	function parseMetadata() : Metadata {
-		var meta = [];
-		while( true ) {
-			var tk = token();
-			switch( tk ) {
-			case TMeta(name):
-				meta.push({ name : name, params : parseMetaArgs() });
-			default:
-				push(tk);
-				break;
-			}
-		}
-		return meta;
-	}
-
-	function parseParams() {
-		if( maybe(TOp("<")) )
-			error(EInvalidOp("Unsupported class type parameters"), readPos, readPos);
-		return {};
-	}
-
-	function parseModuleDecl() : ModuleDecl {
-		var meta = parseMetadata();
-		var ident = getIdent();
-		var isPrivate = false, isExtern = false;
-		while( true ) {
-			switch( ident ) {
-			case "private":
-				isPrivate = true;
-			case "extern":
-				isExtern = true;
-			default:
-				break;
-			}
-			ident = getIdent();
-		}
-		switch( ident ) {
-		case "package":
-			var path = parsePath();
-			ensure(TStatement);
-			return DPackage(path);
-		case "import":
-			var path = [getIdent()];
-			var star = false;
-			while( true ) {
-				var t = token();
-				if( t != TDot ) {
-					push(t);
-					break;
-				}
-				t = token();
-				switch( t ) {
-				case TId(id):
-					path.push(id);
-				case TOp("*"):
-					star = true;
-				default:
-					unexpected(t);
-				}
-			}
-			var id=null;
-			/*var t = token();
-			switch t{
-				case TStatement:
-				case TId(s): 
-					if(s!='as')
-						error(ECustom('Unexpected $s'));
-					id = getIdent();
-				case _: error(EUnexpected(tokenString(t)));
-			}*/
-			ensureToken(TStatement);
-			return DImport(path, star, id);
-		case "class":
-			var name = getIdent();
-			var params = parseParams();
-			var extend = null;
-			var implement = [];
-
-			while( true ) {
-				var t = token();
-				switch( t ) {
-				case TId("extends"):
-					extend = parseType();
-				case TId("implements"):
-					implement.push(parseType());
-				default:
-					push(t);
-					break;
-				}
-			}
-
-			var fields = [];
-			ensure(TBrOpen);
-			while( !maybe(TBrClose) )
-				fields.push(parseField());
-
-			return DClass({
-				name : name,
-				meta : meta,
-				params : params,
-				extend : extend,
-				implement : implement,
-				fields : fields,
-				isPrivate : isPrivate,
-				isExtern : isExtern,
-			});
-		case "typedef":
-			var name = getIdent();
-			var params = parseParams();
-			ensureToken(TOp("="));
-			var t = parseType();
-			return DTypedef({
-				name : name,
-				meta : meta,
-				params : params,
-				isPrivate : isPrivate,
-				t : t,
-			});
-
-		default:
-			unexpected(TId(ident));
-		}
-		return null;
-	}
-	
-	function parseField() : FieldDecl {
-		var meta = parseMetadata();
-		var access = [];
-		while( true ) {
-			var id = getIdent();
-			switch( id ) {
-			case "override":
-				access.push(AOverride);
-			case "public":
-				access.push(APublic);
-			case "private":
-				access.push(APrivate);
-			case "inline":
-				access.push(AInline);
-			case "static":
-				access.push(AStatic);
-			case "macro":
-				access.push(AMacro);
-			case "function":
-				var name = getIdent();
-				var inf = parseFunctionDecl();
-				return {
-					name : name,
-					meta : meta,
-					access : access,
-					kind : KFunction({
-						args : inf.args,
-						expr : inf.body,
-						ret : inf.ret,
-					}),
-				};
-			case "var":
-				var name = getIdent();
-				var get = null, set = null;
-				if( maybe(TPOpen) ) {
-					get = getIdent();
-					ensure(TComma);
-					set = getIdent();
-					ensure(TPClose);
-				}
-				var type = maybe(TDoubleDot) ? parseType() : null;
-				var expr = maybe(TOp("=")) ? parseExpr() : null;
-
-				if( expr != null ) {
-					if( isBlock(expr) )
-						maybe(TStatement);
-					else
-						ensure(TStatement);
-				} else if( type != null && type.match(CTAnon(_)) ) {
-					maybe(TStatement);
-				} else
-					ensure(TStatement);
-
-				return {
-					name : name,
-					meta : meta,
-					access : access,
-					kind : KVar({
-						get : get,
-						set : set,
-						type : type,
-						expr : expr,
-					}),
-				};
-			default:
-				unexpected(TId(id));
-				break;
-			}
-		}
-		return null;
 	}
 
 	// ------------------------ lexing -------------------------------
@@ -1809,20 +1562,6 @@ class Parser {
 				
 				this.char = char;
 				return TOp("=");
-			case '@'.code:
-				char = readChar();
-				if( idents[char] || char == ':'.code ) {
-					var id = char == ':'.code ? "" : String.fromCharCode(char);
-					while( true ) {
-						char = readChar();
-						if( !idents[char] ) {
-							this.char = char;
-							return TMeta(id);
-						}
-						id += String.fromCharCode(char);
-					}
-				}
-				invalidChar(char);
 			default:
 				if( ops[char] ) {
 					var op = String.fromCharCode(char);
@@ -1967,8 +1706,6 @@ class Parser {
 		case TQDoubleAssign: "??=";
 		case TQuestion: "?";
 		case TDoubleDot: ":";
-		case TMeta(id): "@" + id;
-		case TPrepro(id): "#" + id;
 		case TEol: null;
 		}
 	}
